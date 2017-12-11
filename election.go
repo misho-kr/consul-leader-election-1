@@ -1,7 +1,7 @@
 package election
 
 import (
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
 	"time"
 )
