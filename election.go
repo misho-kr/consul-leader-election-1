@@ -98,8 +98,8 @@ func (le *LeaderElection) ElectLeader() {
 			} else {
 
 				if kv != nil && kv.Session != "" {
-					log.Info("Current leader: ", string(kv.Value))
-					log.Info("Leader Session: ", string(kv.Session))
+					log.Debug("Current leader: ", string(kv.Value))
+					log.Debug("Leader Session: ", string(kv.Session))
 				}
 			}
 
