@@ -26,3 +26,10 @@ leaderElection := &election.LeaderElection{
 
 go leaderElection.ElectLeader()                                // Run the election
 ```
+
+## Upstream repo
+
+This repo was cloned from [consul-leader-election](https://github.com/dpires/consul-leader-election) repo in order to update the [Logrus](https://github.com/sirupsen/logrus) dependency to use all lower-case url. My pull request was not reviewed for some time which necessitated this clone.
+
+Plus code formating and style updates...
+

@@ -1,24 +1,25 @@
 package election
 
 import (
-	log "github.com/sirupsen/logrus"
-	"github.com/hashicorp/consul/api"
 	"time"
+
+	"github.com/hashicorp/consul/api"
+	log "github.com/sirupsen/logrus"
 )
+
+const minElectionCheckInterval = time.Second
 
 type ConsulInterface interface {
 	GetAgentName() string
 	GetKey(string) (*api.KVPair, error)
-	PutKey(*api.KVPair) error
 	ReleaseKey(*api.KVPair) (bool, error)
 	GetSession(string) string
-	AquireSessionKey(string, string) (bool, error)
-	GetHealthChecks(state string, options *api.QueryOptions) ([]*api.HealthCheck, error)
+	AcquireSessionKey(string, string) (bool, error)
 }
 
 type LeaderElection struct {
 	LeaderKey     string
-	WatchWaitTime int
+	WatchWaitTime time.Duration
 	StopElection  chan bool
 	Client        ConsulInterface
 }
@@ -28,82 +29,74 @@ func (le *LeaderElection) CancelElection() {
 }
 
 func (le *LeaderElection) StepDown() error {
-	if le.IsLeader() {
-		client := le.Client
-		name := client.GetAgentName()
-		session := le.GetSession(le.LeaderKey)
-		key := &api.KVPair{Key: le.LeaderKey, Value: []byte(name), Session: session}
-		released, err := client.ReleaseKey(key)
-		if !released || err != nil {
-			return err
-		} else {
-			log.Info("Released leadership")
-		}
+	if !le.IsLeader() {
+		return nil
 	}
-	return nil
+
+	released, err := le.Client.ReleaseKey(&api.KVPair{
+		Key:     le.LeaderKey,
+		Value:   []byte(le.Client.GetAgentName()),
+		Session: le.GetSession(le.LeaderKey),
+	})
+	if err == nil && released {
+		log.Infof("released leadership: %s", le.LeaderKey)
+	}
+
+	return err
 }
 
 func (le *LeaderElection) IsLeader() bool {
-	client := le.Client
-	name := client.GetAgentName()
-	session := le.GetSession(le.LeaderKey)
-	kv, err := client.GetKey(le.LeaderKey)
-	if err != nil || kv == nil {
-		if err != nil {
-			log.Error(err)
-		}
-		log.Info("Leadership key is missing")
+	kv, err := le.Client.GetKey(le.LeaderKey)
+	if err != nil {
+		log.Errorf("get [key=%s]: %s", le.LeaderKey, err)
+		return false
+	}
+	if kv == nil {
+		log.Infof("leadership key is missing: %s", le.LeaderKey)
 		return false
 	}
 
-	return name == string(kv.Value) && session == kv.Session
+	return le.Client.GetAgentName() == string(kv.Value) &&
+		le.GetSession(le.LeaderKey) == kv.Session
 }
 
 func (le *LeaderElection) GetSession(sessionName string) string {
-	client := le.Client
-	session := client.GetSession(sessionName)
-	return session
+	return le.Client.GetSession(sessionName)
 }
 
 func (le *LeaderElection) ElectLeader() {
-	client := le.Client
-	name := client.GetAgentName()
-	stop := false
-	for !stop {
+	if le.WatchWaitTime < minElectionCheckInterval {
+		le.WatchWaitTime = minElectionCheckInterval
+	}
+
+	name := le.Client.GetAgentName()
+	for {
 		select {
 		case <-le.StopElection:
-			stop = true
-			log.Info("Stopping election")
+			log.Info("stopping election")
+			return
 		default:
 			if !le.IsLeader() {
-
-				session := le.GetSession(le.LeaderKey)
-
-				aquired, err := client.AquireSessionKey(le.LeaderKey, session)
-
-				if aquired {
-					log.Infof("%s is now the leader", name)
-				}
-
-				if err != nil {
+				switch acquired, err := le.Client.AcquireSessionKey(
+					le.LeaderKey, le.GetSession(le.LeaderKey)); {
+				case err != nil:
 					log.Warn(err)
+				case acquired:
+					log.Infof("now the leader is: %s", name)
 				}
-
 			}
 
-			kv, err := client.GetKey(le.LeaderKey)
-
+			kv, err := le.Client.GetKey(le.LeaderKey)
 			if err != nil {
 				log.Error(err)
 			} else {
-
 				if kv != nil && kv.Session != "" {
-					log.Debug("Current leader: ", string(kv.Value))
-					log.Debug("Leader Session: ", string(kv.Session))
+					log.Debugf("current leader=%s, session=%s",
+						string(kv.Value), kv.Session)
 				}
 			}
 
-			time.Sleep(time.Duration(le.WatchWaitTime) * time.Second)
+			time.Sleep(le.WatchWaitTime)
 		}
 	}
 }
