@@ -12,9 +12,9 @@ const minElectionCheckInterval = time.Second
 type ConsulInterface interface {
 	GetAgentName() string
 	GetKey(string) (*api.KVPair, error)
-	ReleaseKey(*api.KVPair) (bool, error)
 	GetSession(string) string
 	AcquireSessionKey(string, string) (bool, error)
+	ReleaseKey(string, string) (bool, error)
 }
 
 type LeaderElection struct {
@@ -33,11 +33,7 @@ func (le *LeaderElection) StepDown() error {
 		return nil
 	}
 
-	released, err := le.Client.ReleaseKey(&api.KVPair{
-		Key:     le.LeaderKey,
-		Value:   []byte(le.Client.GetAgentName()),
-		Session: le.GetSession(le.LeaderKey),
-	})
+	released, err := le.Client.ReleaseKey(le.LeaderKey, le.GetSession(le.LeaderKey))
 	if err == nil && released {
 		log.Infof("released leadership: %s", le.LeaderKey)
 	}

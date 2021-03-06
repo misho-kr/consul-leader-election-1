@@ -37,7 +37,7 @@ func (fcc *FakeConsulClient) GetKey(key string) (*api.KVPair, error) {
 	return nil, errors.New("key not found")
 }
 
-func (fcc *FakeConsulClient) ReleaseKey(*api.KVPair) (bool, error) {
+func (fcc *FakeConsulClient) ReleaseKey(string, string) (bool, error) {
 	if fcc.Client.ReleaseKeyError {
 		return false, errors.New("ERROR RELEASE KEY")
 	}
@@ -49,7 +49,7 @@ func (fcc *FakeConsulClient) GetSession(name string) string {
 	return name
 }
 
-func (fcc *FakeConsulClient) AcquireSessionKey(_, _ string) (bool, error) {
+func (fcc *FakeConsulClient) AcquireSessionKey(string, string) (bool, error) {
 	if fcc.Client.AcquireKeyError {
 		return false, errors.New("ERROR")
 	}
