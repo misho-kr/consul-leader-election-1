@@ -1,17 +1,12 @@
 package client
 
 import (
-	log "github.com/sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
+	log "github.com/sirupsen/logrus"
 )
 
 type ConsulClient struct {
 	Client *api.Client
-}
-
-func (cc *ConsulClient) GetHealthChecks(state string, options *api.QueryOptions) ([]*api.HealthCheck, error) {
-    checks, _, err := cc.Client.Health().State("any", options)
-    return checks, err
 }
 
 func (cc *ConsulClient) GetSession(sessionName string) string {
@@ -23,27 +18,16 @@ func (cc *ConsulClient) GetSession(sessionName string) string {
 		}
 	}
 
-	log.Info("No leadership sessions found, creating...")
+	log.Infof("leadership session not found, creating: %s", sessionName)
 
-	sessionEntry := &api.SessionEntry{Name: sessionName}
-	session, _, err := cc.Client.Session().Create(sessionEntry, nil)
+	session, _, err := cc.Client.Session().Create(
+		&api.SessionEntry{
+			Name: sessionName,
+		}, nil)
 	if err != nil {
 		log.Warn(err)
 	}
 	return session
-}
-
-func (cc *ConsulClient) AquireSessionKey(key string, session string) (bool, error) {
-
-	pair := &api.KVPair{
-		Key:     key,
-		Value:   []byte(cc.GetAgentName()),
-		Session: session,
-	}
-
-	aquired, _, err := cc.Client.KV().Acquire(pair, nil)
-
-	return aquired, err
 }
 
 func (cc *ConsulClient) GetAgentName() string {
@@ -51,18 +35,29 @@ func (cc *ConsulClient) GetAgentName() string {
 	return agent["Config"]["NodeName"].(string)
 }
 
-func (cc *ConsulClient) PutKey(key *api.KVPair) (error) {
-    _, err := cc.Client.KV().Put(key, nil)
-    return err
-}
-
 func (cc *ConsulClient) GetKey(keyName string) (*api.KVPair, error) {
 	kv, _, err := cc.Client.KV().Get(keyName, nil)
 	return kv, err
-
 }
 
-func (cc *ConsulClient) ReleaseKey(key *api.KVPair) (bool, error) {
-	released, _, err := cc.Client.KV().Release(key, nil)
+func (cc *ConsulClient) AcquireSessionKey(key, session string) (bool, error) {
+	acquired, _, err := cc.Client.KV().Acquire(
+		&api.KVPair{
+			Key:     key,
+			Value:   []byte(cc.GetAgentName()),
+			Session: session,
+		}, nil)
+
+	return acquired, err
+}
+
+func (cc *ConsulClient) ReleaseKey(key, session string) (bool, error) {
+	released, _, err := cc.Client.KV().Release(
+		&api.KVPair{
+			Key:     key,
+			Value:   []byte(cc.GetAgentName()),
+			Session: session,
+		}, nil)
+
 	return released, err
 }

@@ -2,16 +2,22 @@ package election
 
 import (
 	"errors"
-	. "github.com/franela/goblin"
-	"github.com/hashicorp/consul/api"
 	"testing"
 	"time"
+
+	. "github.com/franela/goblin"
+	"github.com/hashicorp/consul/api"
+	"github.com/sirupsen/logrus"
 )
+
+func init() {
+	logrus.SetLevel(logrus.DebugLevel)
+}
 
 type FakeClient struct {
 	Key             string
 	GetKeyOutput    string
-	AquireKeyError  bool
+	AcquireKeyError bool
 	ReleaseKeyError bool
 }
 
@@ -19,15 +25,8 @@ type FakeConsulClient struct {
 	Client FakeClient
 }
 
-func (fcc *FakeConsulClient) GetHealthChecks(state string, options *api.QueryOptions) ([]*api.HealthCheck, error) {
-	return nil, nil
-}
 func (fcc *FakeConsulClient) GetAgentName() string {
 	return "my node"
-}
-
-func (fcc *FakeConsulClient) PutKey(key *api.KVPair) error {
-	return nil
 }
 
 func (fcc *FakeConsulClient) GetKey(key string) (*api.KVPair, error) {
@@ -35,10 +34,10 @@ func (fcc *FakeConsulClient) GetKey(key string) (*api.KVPair, error) {
 	if fcc.Client.GetKeyOutput == "kv" {
 		return kv, nil
 	}
-	return nil, errors.New("Key not found")
+	return nil, errors.New("key not found")
 }
 
-func (fcc *FakeConsulClient) ReleaseKey(keyPair *api.KVPair) (bool, error) {
+func (fcc *FakeConsulClient) ReleaseKey(string, string) (bool, error) {
 	if fcc.Client.ReleaseKeyError {
 		return false, errors.New("ERROR RELEASE KEY")
 	}
@@ -50,8 +49,8 @@ func (fcc *FakeConsulClient) GetSession(name string) string {
 	return name
 }
 
-func (fcc *FakeConsulClient) AquireSessionKey(key string, session string) (bool, error) {
-	if fcc.Client.AquireKeyError {
+func (fcc *FakeConsulClient) AcquireSessionKey(string, string) (bool, error) {
+	if fcc.Client.AcquireKeyError {
 		return false, errors.New("ERROR")
 	}
 	fcc.Client.GetKeyOutput = "kv"
@@ -68,15 +67,14 @@ func TestLeaderElection(t *testing.T) {
 			le := LeaderElection{
 				LeaderKey:     fakeClient.Key,
 				StopElection:  make(chan bool),
-				WatchWaitTime: 2,
+				WatchWaitTime: 2 * time.Second,
 				Client:        fake,
 			}
 			go le.ElectLeader()
-			time.Sleep(time.Duration(le.WatchWaitTime) * time.Second)
+			time.Sleep(le.WatchWaitTime)
 			le.CancelElection()
 			err := le.StepDown()
-			isNotNil := (err != nil)
-			g.Assert(isNotNil).IsTrue()
+			g.Assert(err != nil).IsTrue()
 
 		})
 		g.It("StepDown()", func() {
@@ -85,27 +83,27 @@ func TestLeaderElection(t *testing.T) {
 			le := LeaderElection{
 				LeaderKey:     fakeClient.Key,
 				StopElection:  make(chan bool),
-				WatchWaitTime: 2,
+				WatchWaitTime: 2 * time.Second,
 				Client:        fake,
 			}
 			go le.ElectLeader()
-			time.Sleep(time.Duration(le.WatchWaitTime) * time.Second)
+			time.Sleep(le.WatchWaitTime)
 			le.CancelElection()
-			le.StepDown()
+			_ = le.StepDown()
 			g.Assert(le.IsLeader()).IsFalse()
 
 		})
 		g.It("ElectLeader() Failure", func() {
-			fakeClient := FakeClient{Key: "service/leader-election/leader", AquireKeyError: true}
+			fakeClient := FakeClient{Key: "service/leader-election/leader", AcquireKeyError: true}
 			fake := &FakeConsulClient{Client: fakeClient}
 			le := LeaderElection{
 				LeaderKey:     fakeClient.Key,
 				StopElection:  make(chan bool),
-				WatchWaitTime: 2,
+				WatchWaitTime: 2 * time.Second,
 				Client:        fake,
 			}
 			go le.ElectLeader()
-			time.Sleep(time.Duration(le.WatchWaitTime) * time.Second)
+			time.Sleep(le.WatchWaitTime)
 			le.CancelElection()
 			g.Assert(le.IsLeader()).IsFalse()
 		})
@@ -115,11 +113,11 @@ func TestLeaderElection(t *testing.T) {
 			le := LeaderElection{
 				LeaderKey:     fakeClient.Key,
 				StopElection:  make(chan bool),
-				WatchWaitTime: 2,
+				WatchWaitTime: 2 * time.Second,
 				Client:        fake,
 			}
 			go le.ElectLeader()
-			time.Sleep(time.Duration(le.WatchWaitTime) * time.Second)
+			time.Sleep(le.WatchWaitTime)
 			le.CancelElection()
 			g.Assert(le.IsLeader()).IsTrue()
 		})
@@ -129,7 +127,7 @@ func TestLeaderElection(t *testing.T) {
 			le := LeaderElection{
 				LeaderKey:     fakeClient.Key,
 				StopElection:  make(chan bool),
-				WatchWaitTime: 1,
+				WatchWaitTime: time.Second,
 				Client:        fake,
 			}
 			go le.ElectLeader()
@@ -143,7 +141,7 @@ func TestLeaderElection(t *testing.T) {
 			le := LeaderElection{
 				LeaderKey:     fakeClient.Key,
 				StopElection:  make(chan bool),
-				WatchWaitTime: 1,
+				WatchWaitTime: time.Second,
 				Client:        fake,
 			}
 
@@ -154,7 +152,7 @@ func TestLeaderElection(t *testing.T) {
 			le = LeaderElection{
 				LeaderKey:     fakeClient.Key,
 				StopElection:  make(chan bool),
-				WatchWaitTime: 1,
+				WatchWaitTime: time.Second,
 				Client:        fake,
 			}
 
